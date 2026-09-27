@@ -1,16 +1,19 @@
 import abc
 import codecs
+from dataclasses import dataclass
 import glob
 import logging
 import os
 import re
 import subprocess
 import time
+from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import requests
 
 from define import FORMAT_MAX_LENGTH, IN_MEMORY_MARKER, TITLE_MAX_LENGTH
+import models
 from utils import is_course_complete, mkdir_p, normalize_path
 
 # --- filtering (merged from filtering.py) ---
@@ -261,6 +264,143 @@ class CourseDownloader:
         pass
 
 
+@dataclass(frozen=True)
+class PlannedResource:
+    """Resource planned for download with concrete target path."""
+
+    url: str
+    fmt: str
+    filename: str
+    title: str
+    is_in_memory: bool = False
+
+
+@dataclass(frozen=True)
+class PlannedSection:
+    """Section containing concrete target directory and planned resources."""
+
+    index: int
+    slug: str
+    dir: str
+    resources: Tuple[PlannedResource, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlannedModule:
+    """Module containing planned sections."""
+
+    index: int
+    slug: str
+    name: str
+    sections: Tuple[PlannedSection, ...] = ()
+
+
+def plan_downloads(
+    modules: Union[List, Tuple, models.CourseManifest],
+    class_name: str,
+    path: str = "",
+    ignored_formats: Optional[List[str]] = None,
+    args: Optional[Any] = None,
+) -> List[PlannedModule]:
+    """Pure planning function: maps CourseManifest or legacy tuples to planned modules.
+
+    Does no I/O, network requests, or filesystem writes.
+    """
+    if isinstance(modules, models.CourseManifest):
+        manifest = modules
+    else:
+        manifest = models.legacy_to_manifest(modules, class_name=class_name)
+
+    file_formats = getattr(args, "file_formats", ["all"])
+    lecture_filter = getattr(args, "lecture_filter", None)
+    resource_filter = getattr(args, "resource_filter", None)
+    section_filter = getattr(args, "section_filter", None)
+    verbose_dirs = getattr(args, "verbose_dirs", False)
+    combined_section_lectures_nums = getattr(args, "combined_section_lectures_nums", False)
+    ignored_formats = ignored_formats or []
+
+    if len(ignored_formats):
+        logging.info("The following file formats will be ignored: " + ",".join(ignored_formats))
+
+    planned_modules: List[PlannedModule] = []
+    for mod in manifest.modules:
+        mod_name = "%02d_%s" % (mod.index + 1, mod.slug)
+        planned_sections: List[PlannedSection] = []
+
+        for sec in mod.sections:
+            if section_filter and not re.search(section_filter, sec.slug):
+                logging.debug("Skipping b/c of sf: %s %s", section_filter, sec.slug)
+                continue
+
+            sec_dir = os.path.join(
+                path,
+                class_name,
+                mod_name,
+                format_section(sec.index + 1, sec.slug, class_name, verbose_dirs),
+            )
+            planned_resources: List[PlannedResource] = []
+
+            for lec in sec.lectures:
+                if lecture_filter and not re.search(lecture_filter, lec.slug):
+                    logging.debug("Skipping b/c of lf: %s %s", lecture_filter, lec.slug)
+                    continue
+
+                for res in lec.resources:
+                    fmt = res.format
+                    short_fmt = fmt.split(".")[1] if "." in fmt else None
+                    if fmt in ignored_formats or (short_fmt is not None and short_fmt in ignored_formats):
+                        continue
+                    if not (
+                        fmt in file_formats
+                        or (short_fmt is not None and short_fmt in file_formats)
+                        or "all" in file_formats
+                    ):
+                        logging.debug("Skipping b/c format %s not in %s", fmt, file_formats)
+                        continue
+                    if resource_filter and res.title and not re.search(resource_filter, res.title):
+                        logging.debug("Skipping b/c of rf: %s %s", resource_filter, res.title)
+                        continue
+
+                    filename = get_lecture_filename(
+                        combined_section_lectures_nums,
+                        sec_dir,
+                        sec.index,
+                        lec.index,
+                        lec.slug,
+                        res.title,
+                        fmt,
+                    )
+                    planned_resources.append(
+                        PlannedResource(
+                            url=res.legacy_url,
+                            fmt=fmt,
+                            filename=normalize_path(filename),
+                            title=res.title,
+                            is_in_memory=res.is_in_memory,
+                        )
+                    )
+
+            planned_sections.append(
+                PlannedSection(
+                    index=sec.index,
+                    slug=sec.slug,
+                    dir=normalize_path(sec_dir),
+                    resources=tuple(planned_resources),
+                )
+            )
+
+        planned_modules.append(
+            PlannedModule(
+                index=mod.index,
+                slug=mod.slug,
+                name=mod_name,
+                sections=tuple(planned_sections),
+            )
+        )
+
+    return planned_modules
+
+
 class CourseraDownloader(CourseDownloader):
     def __init__(
         self,
@@ -285,35 +425,36 @@ class CourseraDownloader(CourseDownloader):
 
     def download_modules(self, modules):
         completed = True
-        modules = _iter_modules(
-            modules, self._class_name, self._path, self._ignored_formats, self._args
+        planned_modules = plan_downloads(
+            modules=modules,
+            class_name=self._class_name,
+            path=self._path,
+            ignored_formats=self._ignored_formats,
+            args=self._args,
         )
 
-        for module in modules:
+        for module in planned_modules:
             last_update = -1
             for section in module.sections:
                 if not os.path.exists(section.dir):
                     mkdir_p(normalize_path(section.dir))
 
-                for lecture in section.lectures:
-                    for resource in lecture.resources:
-                        lecture_filename = normalize_path(
-                            lecture.filename(resource.fmt, resource.title)
-                        )
-                        last_update = self._handle_resource(
-                            resource.url,
-                            resource.fmt,
-                            lecture_filename,
-                            self._download_completion_handler,
-                            last_update,
-                        )
+                for resource in section.resources:
+                    lecture_filename = normalize_path(resource.filename)
+                    last_update = self._handle_resource(
+                        resource.url,
+                        resource.fmt,
+                        lecture_filename,
+                        self._download_completion_handler,
+                        last_update,
+                    )
 
                 # After fetching resources, create a playlist in M3U format with the
                 # videos downloaded.
-                if self._args.playlist:
+                if getattr(self._args, "playlist", False):
                     create_m3u_playlist(section.dir)
 
-                if self._args.hooks:
+                if getattr(self._args, "hooks", None):
                     self._run_hooks(section, self._args.hooks)
 
             # if we haven't updated any files in 1 month, we're probably
@@ -326,6 +467,10 @@ class CourseraDownloader(CourseDownloader):
         # Wait for all downloads to complete
         self._downloader.join()
         return completed
+
+    def download_manifest(self, manifest: models.CourseManifest):
+        """Download a CourseManifest directly (shared seam for future providers)."""
+        return self.download_modules(manifest)
 
     def _download_completion_handler(self, url, result):
         if isinstance(result, requests.exceptions.RequestException):
