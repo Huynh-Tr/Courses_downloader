@@ -8,6 +8,7 @@ unauthorized asset downloads or bypassing media restrictions.
 
 from dataclasses import dataclass, field
 import ipaddress
+import json
 import logging
 import os
 import re
@@ -100,20 +101,45 @@ DEFAULT_ALLOWED_HOSTS = {
 
 
 def load_cookies_from_file(cookies_path: str) -> requests.cookies.RequestsCookieJar:
-    """Load Netscape format cookies from file into a RequestsCookieJar in memory."""
+    """Load cookies from file (Netscape format or JSON format) into a RequestsCookieJar in memory."""
     if not os.path.exists(cookies_path):
         raise FileNotFoundError(f"Cookies file not found: {cookies_path}")
 
     cj = requests.cookies.RequestsCookieJar()
     with open(cookies_path, "r", encoding="utf-8", errors="ignore") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            parts = line.split("\t")
-            if len(parts) >= 7:
-                domain, flag, path, secure, expiry, name, value = parts[:7]
-                cj.set(name, value, domain=domain, path=path)
+        content = f.read()
+
+    # 1. Try parsing as JSON (exported by browser extensions like Cookie-Editor / EditThisCookie)
+    try:
+        data = json.loads(content)
+        if isinstance(data, list):
+            for c in data:
+                if isinstance(c, dict) and "name" in c and "value" in c:
+                    cj.set(
+                        c.get("name"),
+                        c.get("value"),
+                        domain=c.get("domain", ".edx.org"),
+                        path=c.get("path", "/"),
+                    )
+            if len(cj):
+                return cj
+        elif isinstance(data, dict):
+            for k, v in data.items():
+                cj.set(k, str(v), domain=".edx.org", path="/")
+            if len(cj):
+                return cj
+    except Exception:
+        pass
+
+    # 2. Fallback to standard Netscape cookies.txt format
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            domain, flag, path, secure, expiry, name, value = parts[:7]
+            cj.set(name, value, domain=domain, path=path)
     return cj
 
 
@@ -658,18 +684,37 @@ class EdxClient:
                 return True
         return False
 
-    def get_course_blocks(self, course_key: str) -> Dict[str, Any]:
+    def get_current_username(self) -> Optional[str]:
+        """Fetch username for the authenticated session, if available."""
+        url = f"{self._base_url}/api/user/v1/me"
+        try:
+            resp = self._session.get(url, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("username")
+        except Exception as e:
+            logging.debug("Could not determine username from /api/user/v1/me: %s", e)
+        return None
+
+    def get_course_blocks(self, course_key: str, username: Optional[str] = None) -> Dict[str, Any]:
         """Fetch full Course Blocks tree for the specified course."""
-        encoded_key = quote(course_key, safe="")
-        url = (
-            f"{self._base_url}/api/courses/v1/blocks/"
-            f"?course_id={encoded_key}&all_blocks=true&depth=all"
-            f"&requested_fields=children,display_name,type,student_view_data"
-        )
+        url = f"{self._base_url}/api/courses/v1/blocks/"
         logging.info("Fetching edX Course Blocks: %s", redact_url(url))
 
+        target_user = username or self.get_current_username()
+        params = {
+            "course_id": course_key,
+            "depth": "all",
+            "student_view_data": "video,html",
+            "requested_fields": "children,display_name,type,student_view_data",
+        }
+        if target_user:
+            params["username"] = target_user
+        else:
+            params["all_blocks"] = "true"
+
         try:
-            resp = self._session.get(url, timeout=60)
+            resp = self._session.get(url, params=params, timeout=60)
             if resp.status_code in (401, 403):
                 raise EdxAuthError("Access forbidden to course blocks (HTTP 401/403).")
             if resp.status_code == 404:
@@ -890,8 +935,9 @@ class EdxDownloader(workflow.CourseDownloader):
     def download_planned_modules(
         self,
         planned_modules: List[workflow.PlannedModule],
+        limit: int = 0,
     ) -> bool:
-        """Download all resources across planned modules."""
+        """Download all resources across planned modules, with optional count limit."""
         total = sum(
             len(sec.resources)
             for mod in planned_modules
@@ -902,6 +948,9 @@ class EdxDownloader(workflow.CourseDownloader):
         for mod in planned_modules:
             for sec in mod.sections:
                 for res in sec.resources:
+                    if limit > 0 and (self.summary.downloaded + self.summary.skipped_existing) >= limit:
+                        logging.info("Reached resource download limit of %d. Stopping.", limit)
+                        return self.summary.failed == 0
                     self.download_resource(res)
 
         return self.summary.failed == 0

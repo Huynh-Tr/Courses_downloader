@@ -3,6 +3,7 @@ Unit tests for edX.org provider parser, security guards, client interface,
 and integration with Phase 01 neutral CourseManifest planning.
 """
 
+import os
 import tests  # noqa: F401 - triggers test network guard and shims
 import unittest
 from unittest.mock import MagicMock, patch
@@ -94,6 +95,24 @@ class TestEdxIdentifiersAndSecurity(unittest.TestCase):
         ]
         for url in unsafe_urls:
             self.assertFalse(edx_provider.is_safe_edx_url(url), f"Expected unsafe: {url}")
+
+
+    def test_load_cookies_from_file_json_and_netscape(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            # JSON format
+            json_file = os.path.join(td, "cookies.json")
+            with open(json_file, "w") as f:
+                f.write('[{"name": "edxloggedin", "value": "true", "domain": ".edx.org", "path": "/"}]')
+            jar_json = edx_provider.load_cookies_from_file(json_file)
+            self.assertEqual(jar_json.get("edxloggedin"), "true")
+
+            # Netscape format
+            netscape_file = os.path.join(td, "cookies.txt")
+            with open(netscape_file, "w") as f:
+                f.write(".edx.org\tTRUE\t/\tTRUE\t2147483647\tsessionid\txyz123\n")
+            jar_net = edx_provider.load_cookies_from_file(netscape_file)
+            self.assertEqual(jar_net.get("sessionid"), "xyz123")
 
 
 class TestEdxCourseParser(unittest.TestCase):

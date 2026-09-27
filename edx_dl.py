@@ -83,6 +83,20 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Preferred subtitle language code (e.g. en, vi, es, fr)",
     )
     parser.add_argument(
+        "--section-filter",
+        dest="section_filter",
+        type=str,
+        default=None,
+        help="Regular expression to filter sections by slug (e.g. 'overview')",
+    )
+    parser.add_argument(
+        "--limit",
+        dest="limit",
+        type=int,
+        default=0,
+        help="Maximum number of resources to download (0 = unlimited)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"edx-dl {__version__}",
@@ -229,6 +243,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             modules=manifest,
             class_name=manifest.slug,
             path=target_path,
+            args=args,
         )
 
         if args.dry_run:
@@ -246,7 +261,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             path=target_path,
             overwrite=args.overwrite,
         )
-        success = downloader.download_planned_modules(planned_modules)
+        success = downloader.download_planned_modules(planned_modules, limit=args.limit)
         print(downloader.format_summary(manifest.title))
         return 0 if success else 1
 
