@@ -19,12 +19,13 @@
   - **Acceptance**: fixture/tempdir tests khóa exact relative paths và downloader calls; full offline suite pass; live Coursera walkthrough tải thành công 1899 files (427MB) khóa Wharton Quantitative Modeling.
   - **Status**: Hoàn thành toàn diện (83 tests pass, live download pass exit 0, sẵn sàng cho Phase 02 edX).
 
-- [ ] **Phase 02 — edX.org Downloadable Course MVP**  
+- [x] **Phase 02 — edX.org Downloadable Course MVP**
   Packet: `specs/phases/2026-09-27-edx-download-mvp/`
   - **Outcome / value**: từ course key hoặc URL `learning.edx.org` và phiên browser hợp lệ, người dùng xem dry-run rồi tải được các video trực tiếp được phép tải, phụ đề và attachment mà khóa học công khai link tải.
   - **Scope**: chỉ edX.org/learning.edx.org; session cookie không password; Course Blocks/enrollment discovery được xác minh bằng fixture; CLI riêng mỏng; reuse neutral core Phase 01.
   - **Dependencies / assumptions**: Phase 01 Done; course mẫu cho phép personal download; endpoint/schema được spike xác nhận; không thêm `yt-dlp`/ffmpeg/Playwright trong MVP.
   - **Acceptance**: mocked API/resource suite pass; restricted/DRM/HLS/YouTube-only content được skip có reason; authorized live walkthrough tải ít nhất một resource được phép và chạy lại idempotent.
+  - **Status**: Hoàn thành toàn diện (117 tests pass; live walkthrough xác thực trên khóa MITx 15.481x: 539 resources discovery, 4 files tải thành công 86.6MB, rerun idempotent pass).
 
 - [ ] **Phase 03 — Entrypoint & Authentication Simplification**
   - **Outcome / value**: bỏ global `sys.argv` mutation, hợp nhất URL→slug và cookie/session loading; secret không xuất hiện trong debug log.

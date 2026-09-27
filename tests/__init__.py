@@ -10,7 +10,9 @@ from unittest.mock import MagicMock
 # 1. Shims for missing third-party packages in clean/offline environments.
 # This ensures characterization tests run on standard Python 3.10+ without modifying system packages.
 
-if "configargparse" not in sys.modules:
+try:
+    import configargparse
+except ImportError:
     sys.modules["configargparse"] = argparse
     argparse.ArgParser = argparse.ArgumentParser
 
@@ -51,19 +53,25 @@ class _DummyVersion:
         return self._parts == other_parts
 
 
-if "packaging" not in sys.modules:
+try:
+    import packaging
+except ImportError:
     _pkg = MagicMock()
     _pkg.version.Version = _DummyVersion
     _pkg.version.parse = _DummyVersion
     sys.modules["packaging"] = _pkg
     sys.modules["packaging.version"] = _pkg.version
 
-if "bs4" not in sys.modules:
+try:
+    import bs4
+except ImportError:
     _bs4 = MagicMock()
     _bs4.__version__ = "4.13.4"
     sys.modules["bs4"] = _bs4
 
-if "rookiepy" not in sys.modules:
+try:
+    import rookiepy
+except ImportError:
     sys.modules["rookiepy"] = MagicMock()
 
 

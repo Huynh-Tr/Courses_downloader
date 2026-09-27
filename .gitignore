@@ -6,7 +6,11 @@ __pycache__/
 
 # Local authentication/session files
 coursera_cookies.txt
+edx_cookies.txt
+edx_cookies.json
 *.cookies.txt
+*cookies*.txt
+*cookies*.json
 
 # Common Python local env artifacts
 .venv/
