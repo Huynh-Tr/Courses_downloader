@@ -30,3 +30,4 @@
 | 2026-09-27T09:49:51Z | validation-recorded | 2026-09-27-preserve-coursera-behavior | Live download walkthrough complete: 1899 files (427MB) downloaded for wharton-quantitative-modeling; obtain_user_id made graceful | user request | Full course download succeeded with exit code 0 |
 | 2026-09-27T09:50:12Z | phase-complete | 2026-09-27-preserve-coursera-behavior | Phase 01 complete: all criteria and live walkthrough passed | user request | 1899 files downloaded, 83 unit tests passing |
 | 2026-09-27T09:50:16Z | merge-requested | 2026-09-27-preserve-coursera-behavior | User requested merge into main upon successful course download | user instruction | Merging feature/2026-09-27-preserve-coursera-behavior into main |
+| 2026-09-27T09:50:58Z | merged | 2026-09-27-preserve-coursera-behavior | Merged feature/2026-09-27-preserve-coursera-behavior into main | user instruction | Local merge completed cleanly; no fast-forward with commit attribution |
