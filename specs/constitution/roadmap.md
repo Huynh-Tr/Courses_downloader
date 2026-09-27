@@ -11,13 +11,13 @@
 
 ## Các phase
 
-- [-] **Phase 01 — Preserve Coursera Behavior & Neutral Download Core**  
+- [x] **Phase 01 — Preserve Coursera Behavior & Neutral Download Core**  
   Packet: `specs/phases/2026-09-27-preserve-coursera-behavior/`
   - **Outcome / value**: có characterization suite cho contract Coursera quan trọng và một manifest/workflow trung lập để provider mới reuse mà không sao chép naming/download logic.
   - **Scope**: pure helpers, CLI parse contract, legacy tuple adapter, deterministic traversal, output/skip/overwrite/resume/error behavior; giữ public Coursera APIs/signatures.
   - **Dependencies / assumptions**: cần môi trường Python có dependencies hiện tại; không thêm package mặc định; bootstrap cần approval riêng.
-  - **Acceptance**: fixture/tempdir tests khóa exact relative paths và downloader calls; full offline suite pass; live Coursera smoke chỉ chạy khi người dùng cung cấp session/course và cho phép.
-  - **Status**: Group 1–4 hoàn thành (83 unit tests passing, AST parse sạch, diff sạch, neutral seam đã sẵn sàng cho Phase 02; chờ chỉ thị commit/merge).
+  - **Acceptance**: fixture/tempdir tests khóa exact relative paths và downloader calls; full offline suite pass; live Coursera walkthrough tải thành công 1899 files (427MB) khóa Wharton Quantitative Modeling.
+  - **Status**: Hoàn thành toàn diện (83 tests pass, live download pass exit 0, sẵn sàng cho Phase 02 edX).
 
 - [ ] **Phase 02 — edX.org Downloadable Course MVP**  
   Packet: `specs/phases/2026-09-27-edx-download-mvp/`

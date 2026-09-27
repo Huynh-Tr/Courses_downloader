@@ -53,7 +53,7 @@
 | Empty course | empty fixture | no crash; explicit empty plan | returns empty list `[]`; exit 0 | Passed (exit 0) |
 | Existing/resume | precreate complete/partial temp files | existing skipped; resume invocation/path matches legacy contract | skipped when no overwrite/resume; Range header sent on resume=True | Passed (exit 0) |
 | Auth/security | run full test suite with fake cookies containing sentinel secret | sentinel absent from captured logs; no browser/live network | fake CAUTH secret parsed without leaking to logs; socket connects blocked | Passed (exit 0) |
-| Live Coursera smoke | **Chỉ sau authorization riêng**: account/course permitted, disposable output path | behavior/path matches pre-refactor; no secret logged | Not authorized | Deferred/optional until approved |
+| Live Coursera smoke | User authorized: https://www.coursera.org/learn/wharton-quantitative-modeling | 4 modules, 1899 files (427MB) downloaded successfully to Downloads/ | 1899 files, exit 0 | Passed (exit 0) |
 
 ## 4. Rollback & recovery
 

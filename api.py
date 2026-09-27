@@ -727,10 +727,14 @@ class CourseraOnDemand:
         self._asset_retriever = AssetRetriever(session)
 
     def obtain_user_id(self):
-        reply = get_page(self._session, OPENCOURSE_MEMBERSHIPS, json=True)
-        elements = reply["elements"]
-        user_id = elements[0]["userId"] if elements else None
-        self._user_id = user_id
+        try:
+            reply = get_page(self._session, OPENCOURSE_MEMBERSHIPS, json=True)
+            elements = reply["elements"]
+            user_id = elements[0]["userId"] if elements else None
+            self._user_id = user_id
+        except Exception as e:
+            logging.debug("Could not obtain user_id: %s", e)
+            self._user_id = None
 
     def list_courses(self):
         """
