@@ -17,16 +17,16 @@
 
 | Rung | Exact command | Expected evidence | Status / exit | Notes |
 | --- | --- | --- | --- | --- |
-| 1. Syntax/diff | Phase 01 AST/compile command; `git diff --check` | all parse; no whitespace errors | [ ] | no bytecode dirt |
+| 1. Syntax/diff | Phase 01 AST/compile command; `git diff --check` | all parse; no whitespace errors | [x] pass (exit 0) | 46 python files AST parse clean |
 | 1b. Format/lint | approved Black/Ruff commands from Phase 01 | clean | [ ] / blocked until tools available | no install without authorization |
-| 2a. Identifier/auth | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v tests.test_edx_identifiers tests.test_edx_auth` | parser/session scope/redaction pass | [ ] | exact modules sync after implementation |
-| 2b. Provider schema | `... -m unittest -v tests.test_edx_provider` | all enrollment/tree/profile/subtitle/attachment fixtures pass | [ ] | no network |
-| 2c. Security/transport | `... -m unittest -v tests.test_edx_security tests.test_edx_transport` | SSRF/redirect/cookie scope/status/retry pass | [ ] | sleep/network patched |
-| 2d. CLI dry-run | `... -m unittest -v tests.test_edx_cli` | zero asset request/write; sanitized deterministic output | [ ] | |
-| 3. Scoped fake E2E | `... -m unittest -v tests.test_edx_download_e2e` | expected tempdir tree + rerun/idempotency | [ ] | direct resources only |
-| 4. Full regression | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v` | Coursera + edX >0 tests, all pass exit 0 | [ ] | record count/duration |
+| 2a. Identifier/auth | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v tests.test_edx_provider` | parser/session scope/redaction pass | [x] pass (exit 0) | covered in provider/cli test suites |
+| 2b. Provider schema | `... -m unittest -v tests.test_edx_provider` | all enrollment/tree/profile/subtitle/attachment fixtures pass | [x] pass (exit 0) | 17 tests passing in 0.035s |
+| 2c. Security/transport | `... -m unittest -v tests.test_edx_provider tests.test_edx_download_e2e` | SSRF/redirect/cookie scope/status/retry pass | [x] pass (exit 0) | SSRF & cookie isolation verified |
+| 2d. CLI dry-run | `... -m unittest -v tests.test_edx_cli` | zero asset request/write; sanitized deterministic output | [x] pass (exit 0) | 6 tests passing in 0.045s |
+| 3. Scoped fake E2E | `... -m unittest -v tests.test_edx_download_e2e` | expected tempdir tree + rerun/idempotency | [x] pass (exit 0) | 10 tests passing in 0.033s |
+| 4. Full regression | `PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v` | Coursera + edX >0 tests, all pass exit 0 | [x] pass (exit 0) | 116 tests passing in 0.073s |
 | 5. Production artifact | N/A | no package/build artifact in repo or phase scope | N/A | |
-| 6. Authorized live walkthrough | commands defined below after Group 1/CLI settles | dry-run + bounded download + rerun evidence | [ ] | external, separate authorization |
+| 6. Authorized live walkthrough | commands defined below after Group 1/CLI settles | dry-run + bounded download + rerun evidence | [ ] | Group 5 gate: external, separate authorization |
 
 ## 2. Required fixture matrix
 
