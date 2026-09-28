@@ -1,3 +1,49 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coursedownloader"
+version = "0.1.0"
+description = "Course Downloader - Unified CLI tool for Coursera and edX.org lecture materials"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "beautifulsoup4>=4.13.0",
+    "requests>=2.32.0",
+    "configargparse>=0.12.0",
+    "packaging>=24.0",
+]
+
+[project.scripts]
+coursedownloader = "coursedownloader:main"
+coursera-dl = "coursera_dl:_cli_main"
+edx-dl = "edx_dl:main"
+
+[tool.setuptools]
+py-modules = [
+    "api",
+    "commandline",
+    "cookies",
+    "coursedownloader",
+    "coursera_dl",
+    "define",
+    "downloaders",
+    "edge_cookies",
+    "edx_dl",
+    "edx_provider",
+    "extractors",
+    "general",
+    "livedb",
+    "localdb",
+    "locked_cookie",
+    "maingui",
+    "models",
+    "parallel",
+    "utils",
+    "workflow",
+]
+
 [tool.black]
 line-length = 88
 target-version = ["py310", "py311", "py312", "py313"]

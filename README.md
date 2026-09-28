@@ -1,6 +1,6 @@
-# Coursera Full Course Downloader
+# Course Downloader (Coursera & edX.org)
 
-A comprehensive tool for downloading Coursera course materials including videos, subtitles, transcripts, assignments, and supplementary resources. Available as both a **graphical user interface (GUI)** application and a **command-line interface (CLI)** tool.
+A comprehensive, unified tool for downloading lecture materials, direct MP4 videos, subtitles, and course attachments from **Coursera.org** and **edX.org**. Available as a unified CLI (`coursedownloader`), standalone CLI tools (`coursera-dl`, `edx-dl`), and GUI.
 
 ## 📋 Table of Contents
 
@@ -9,8 +9,10 @@ A comprehensive tool for downloading Coursera course materials including videos,
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Usage](#usage)
+  - [Unified CLI (coursedownloader)](#unified-cli-coursedownloader)
+  - [Coursera CLI](#coursera-cli)
+  - [edX CLI](#edx-cli)
   - [GUI Application](#gui-application)
-  - [Command Line Interface](#command-line-interface)
   - [Python API](#python-api)
 - [Authentication Methods](#authentication-methods)
 - [What Gets Downloaded](#what-gets-downloaded)
@@ -21,30 +23,23 @@ A comprehensive tool for downloading Coursera course materials including videos,
 
 ## 🎯 Introduction
 
-**Coursera Full Course Downloader** is a Python-based tool that enables users to download complete Coursera courses for offline viewing and studying. The tool organizes downloaded materials in a structured format, preserving the course hierarchy (weeks/modules, lessons, and individual resources).
-
-This project is designed to help learners access their enrolled courses offline, making education more accessible for those with limited internet connectivity or who prefer offline study materials.
+**Course Downloader** enables learners to download their enrolled courses from **Coursera** and **edX.org** for offline viewing and studying. The tool organizes downloaded materials into structured directories preserving course hierarchy (modules/weeks, sections/lessons, and individual resources).
 
 ## ✨ Features
 
-- **Multiple Interfaces**: Choose between an intuitive GUI or powerful command-line interface
-- **Complete Course Downloads**: Downloads all course materials including:
-  - Video lectures (MP4 format)
-  - Subtitles and transcripts (SRT, TXT)
-  - Supplementary materials (PDFs, Excel files, datasets)
+- **Multi-Platform Support**: Downloads from both Coursera and edX.org using a shared, neutral core
+- **Unified CLI (`coursedownloader`)**: Automatically detects the platform from the course URL, or allows explicit subcommands (`coursedownloader coursera` / `coursedownloader edx`)
+- **Safe & Compliant**: Strictly respects course access controls; skips DRM/restricted streams (`only_on_web`); isolates session cookies from external CDNs
+- **Dry-Run Inspection**: Preview course outline, resource counts, and skip reasons without downloading a single byte (`--dry-run`)
+- **Idempotent Downloads**: Skips already completed files without redundant network calls; supports `--overwrite`
+- **Flexible Authentication**:
+  - Cookie files: Supports both Netscape format (`cookies.txt`) and modern browser extension JSON format (Cookie-Editor / EditThisCookie)
+  - Browser auto-extraction via `rookiepy` and `browser-cookie3` (Chrome, Edge, Firefox, Brave, Safari, etc.)
+- **Complete Course Materials**:
+  - Direct MP4 video lectures
+  - Subtitles and transcripts (SRT, VTT, TXT)
+  - Supplementary materials (PDFs, Excel datasets, Jupyter notebooks)
   - HTML readings and instructions
-  - Practice labs and assignments
-- **Flexible Authentication**: Multiple authentication methods supported:
-  - Microsoft Edge browser cookies (automatic extraction)
-  - Chrome, Firefox, Safari, and other browsers (via browser-cookie3)
-  - Cookie files (Netscape format)
-  - Manual CAUTH token
-- **Organized File Structure**: Downloads are organized by modules and lessons, maintaining course hierarchy
-- **Batch Downloads**: Download multiple courses sequentially
-- **Parallel Downloads**: Multi-threaded downloading for improved speed
-- **Resume Capability**: Continue interrupted downloads
-- **Smart Timeout Handling**: If a file takes longer than 30 seconds, retry once and skip it automatically so the course download can continue
-- **Customizable Options**: Configure video resolution, subtitle languages, output paths, and more
 
 ## 🗂️ Project layout
 
@@ -110,22 +105,41 @@ Files will be saved in: ./Downloads/YOUR-COURSE-NAME/
 
 ## 📖 Usage
 
-### GUI Application
+### Unified CLI (coursedownloader)
 
-The GUI provides an easy-to-use interface for downloading courses:
+Install into your virtual environment with `pip install -e .`, then run `coursedownloader`:
 
 ```bash
-python maingui.py
+# 1. Download by URL (auto-detects Coursera or edX):
+coursedownloader "https://www.coursera.org/learn/wharton-quantitative-modeling" -c coursera_cookies.txt
+coursedownloader "https://learning.edx.org/course/course-v1:MITx+15.481x+1T2021/home" --cookies-file edx_cookies.json
+
+# 2. Explicit Subcommands:
+coursedownloader coursera -c coursera_cookies.txt machine-learning
+coursedownloader edx --cookies-file edx_cookies.json course-v1:MITx+15.481x+1T2021
+
+# 3. Dry-Run Inspection (preview structure and count without downloading):
+coursedownloader edx --cookies-file edx_cookies.json --dry-run course-v1:MITx+15.481x+1T2021
 ```
 
-**Features:**
-- Select authentication method from dropdown
-- Browse for cookie files or enter credentials
-- Configure download options (video quality, subtitles, etc.)
-- View download progress in real-time
-- Access downloaded courses directly from the interface
+### edX CLI (`edx_dl.py` or `edx-dl`)
 
-### Command Line Interface
+Dedicated command-line tool for edX.org:
+
+```bash
+# Dry-run inspection
+python edx_dl.py --cookies-file edx_cookies.json --dry-run course-v1:MITx+15.481x+1T2021
+
+# Download course
+python edx_dl.py --cookies-file edx_cookies.json course-v1:MITx+15.481x+1T2021
+
+# Filter specific section and set subtitle language
+python edx_dl.py --cookies-file edx_cookies.json --section-filter "overview" --sub-lang en course-v1:MITx+15.481x+1T2021
+```
+
+### Coursera CLI (`coursera_dl.py` or `coursera-dl`)
+
+The traditional Coursera command-line interface:
 
 #### Basic Usage
 

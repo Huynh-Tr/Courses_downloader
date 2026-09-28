@@ -1,56 +1,70 @@
-# Quick Start Guide - Coursera Course Downloader
+# Quick Start Guide - Course Downloader (Coursera & edX.org)
 
 ## 🚀 Get Started in 3 Steps
 
 ### Step 1: Prepare Your Cookies
 
-Close Microsoft Edge completely, then run:
+Export your session cookies from your browser (using extensions like **Cookie-Editor** or Netscape format), and save them:
+- For Coursera: `coursera_cookies.txt` (or `.json`)
+- For edX: `edx_cookies.json` (or `.txt`)
 
-```bash
-python coursera_dl.py --save-edge-cookies coursera_cookies.txt
-```
+*(For Edge on Windows, you can also auto-extract Coursera cookies via `python coursera_dl.py --save-edge-cookies coursera_cookies.txt`)*
 
 ### Step 2: Download a Course
 
+Using the unified `coursedownloader`:
+
 ```bash
-python coursera_dl.py "https://www.coursera.org/learn/YOUR-COURSE-NAME"
+# Auto-detect platform from URL:
+coursedownloader "https://www.coursera.org/learn/YOUR-COURSE-NAME" -c coursera_cookies.txt
+coursedownloader "https://learning.edx.org/course/course-v1:Org+Course+Run/home" --cookies-file edx_cookies.json
+
+# Or explicit subcommands:
+coursedownloader coursera -c coursera_cookies.txt YOUR-COURSE-NAME
+coursedownloader edx --cookies-file edx_cookies.json course-v1:Org+Course+Run
 ```
 
 ### Step 3: Find Your Downloaded Files
 
-Files will be in: `./Downloads/YOUR-COURSE-NAME/`
+- Coursera courses: `./Downloads/YOUR-COURSE-NAME/`
+- edX courses: `./Downloads/edx/YOUR-COURSE-SLUG/`
 
 ---
 
 ## 📚 Common Commands
 
-### Download a single course:
+### 1. Unified CLI (`coursedownloader`):
 ```bash
-python coursera_dl.py "https://www.coursera.org/learn/data-analytics-foundations"
+# Dry-run inspect edX course without downloading
+coursedownloader edx --cookies-file edx_cookies.json --dry-run course-v1:MITx+15.481x+1T2021
+
+# Download only specific sections with regex filter
+coursedownloader edx --cookies-file edx_cookies.json --section-filter "overview" course-v1:MITx+15.481x+1T2021
+
+# Download Coursera course with subtitles
+coursedownloader coursera -c coursera_cookies.txt -sl en machine-learning
 ```
 
-### Download with the main CLI and a cookie file:
+### 2. Standalone Provider CLIs:
 ```bash
-python coursera_dl.py --cookies_file coursera_cookies.txt data-analytics-foundations
+# Direct edX downloader
+python edx_dl.py --cookies-file edx_cookies.json --dry-run "https://learning.edx.org/course/course-v1:MITx+15.481x+1T2021/home"
+
+# Direct Coursera downloader
+python coursera_dl.py --cookies_file coursera_cookies.txt "https://www.coursera.org/learn/data-analytics-foundations"
 ```
 
-### Download to specific folder:
-```bash
-python coursera_dl.py "https://www.coursera.org/learn/python-basics" "./my_courses"
-```
-
-### Download multiple courses (Python script):
+### 3. Download multiple courses (Python API):
 ```python
 from coursera_dl import download_coursera_course
 
 courses = [
     "https://www.coursera.org/learn/course-1",
     "https://www.coursera.org/learn/course-2",
-    "https://www.coursera.org/learn/course-3"
 ]
 
 for course in courses:
-    download_coursera_course(course)
+    download_coursera_course(course, cookies_file="coursera_cookies.txt")
 ```
 
 ---
@@ -58,9 +72,9 @@ for course in courses:
 ## ✅ What You Get
 
 Each course download includes:
-- 📹 All video lectures (MP4)
-- 📝 Subtitles (SRT) and transcripts (TXT)
-- 📊 Practice materials (Excel, PDFs, datasets)
+- 📹 Video lectures (Direct MP4)
+- 📝 Subtitles (SRT, VTT) and transcripts (TXT)
+- 📊 Course materials (PDFs, Excel datasets, code notebooks)
 - 📖 HTML readings and instructions
 
 ---
