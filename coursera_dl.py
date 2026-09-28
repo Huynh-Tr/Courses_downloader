@@ -97,40 +97,17 @@ def create_session(args):
     if args.cookies_cauth:
         session.cookies.set("CAUTH", args.cookies_cauth)
     elif args.browser:
+        from cookies import load_cookies_from_browser
 
-        def autocookie(browser):
-            import browser_cookie3
-
-            if browser == "chrome":
-                cj = browser_cookie3.chrome(domain_name="coursera.org")
-            elif browser == "chromium":
-                cj = browser_cookie3.chromium(domain_name="coursera.org")
-            elif browser == "opera":
-                cj = browser_cookie3.opera(domain_name="coursera.org")
-            elif browser == "opera_gx":
-                cj = browser_cookie3.opera_gx(domain_name="coursera.org")
-            elif browser == "brave":
-                cj = browser_cookie3.brave(domain_name="coursera.org")
-            elif browser == "edge":
-                cj = browser_cookie3.edge(domain_name="coursera.org")
-            elif browser == "vivaldi":
-                cj = browser_cookie3.vivaldi(domain_name="coursera.org")
-            elif browser == "firefox":
-                cj = browser_cookie3.firefox(domain_name="coursera.org")
-            elif browser == "librewolf":
-                cj = browser_cookie3.librewolf(domain_name="coursera.org")
-            elif browser == "safari":
-                cj = browser_cookie3.safari(domain_name="coursera.org")
-            else:
-                raise RuntimeError(f"Invalid browser {args.browser}")
-            for cookie in cj:
-                if cookie.name == "CAUTH":
-                    return cookie.value
-            else:
-                raise Exception("Can not find CAUTH in {args.browser}")
-
-        cauth_cookie = autocookie(args.browser)
-        logging.debug(f'Got CAUTH cookie from {args.browser}: "{cauth_cookie}"')
+        cj = load_cookies_from_browser(args.browser, domain="coursera.org")
+        cauth_cookie = None
+        for cookie in cj:
+            if cookie.name == "CAUTH":
+                cauth_cookie = cookie.value
+                break
+        if not cauth_cookie:
+            raise Exception(f"Can not find CAUTH in {args.browser}")
+        logging.debug("Successfully retrieved CAUTH cookie from browser '%s'", args.browser)
         session.cookies.set("CAUTH", cauth_cookie)
     elif args.use_edge_cookies:
         # Handle Edge cookies extraction
@@ -296,6 +273,9 @@ def main_f(cmd):
 
     session = create_session(args)
 
+    import general
+    args.class_names = [general.urltoclassname(c) or c for c in args.class_names]
+
     if args.specialization:
         args.class_names = expand_specializations(session, args.class_names)
 
@@ -362,14 +342,14 @@ def main_f(cmd):
 
 def extract_course_slug(course_url):
     """Return course slug from a Coursera /learn/ URL."""
-    pattern = r"coursera\.org/learn/([a-zA-Z0-9\-]+)"
-    match = re.search(pattern, course_url)
-    if match:
-        return match.group(1)
-    raise ValueError(
-        f"Invalid Coursera URL: {course_url}. "
-        "Expected format: https://www.coursera.org/learn/course-name"
-    )
+    import general
+
+    if not course_url or not ("coursera.org/learn/" in str(course_url).lower()):
+        raise ValueError(
+            f"Invalid Coursera URL: {course_url}. "
+            "Expected format: https://www.coursera.org/learn/course-name"
+        )
+    return general.extract_slug_from_url(course_url, strict=True)
 
 
 def download_coursera_course(course_url, output_path=None, cookies_file=None):
@@ -399,9 +379,7 @@ def download_coursera_course(course_url, output_path=None, cookies_file=None):
             return False
         os.makedirs(output_path, exist_ok=True)
         logging.info("Output directory: %s", output_path)
-        argv0 = sys.argv[0] if sys.argv else "coursera_dl.py"
-        sys.argv = [
-            argv0,
+        cmd = [
             "--cookies_file",
             cookies_file,
             "--path",
@@ -411,7 +389,7 @@ def download_coursera_course(course_url, output_path=None, cookies_file=None):
         logging.info("Starting download for course: %s", course_slug)
         logging.info("URL: %s", course_url)
         logging.info("=" * 80)
-        main_f(None)
+        main_f(cmd)
         logging.info("=" * 80)
         logging.info("Download completed for course: %s", course_slug)
         course_dir = os.path.join(output_path, course_slug)
@@ -429,17 +407,20 @@ def download_coursera_course(course_url, output_path=None, cookies_file=None):
         return False
 
 
-def _cli_main():
-    if len(sys.argv) >= 2:
-        first = sys.argv[1]
+def _cli_main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+    if len(argv) >= 1:
+        first = argv[0]
         if first.startswith("http") and "coursera.org/learn/" in first:
             course_url = first
-            output_path = sys.argv[2] if len(sys.argv) > 2 else None
-            cookies_file = sys.argv[3] if len(sys.argv) > 3 else None
+            output_path = argv[1] if len(argv) > 1 else None
+            cookies_file = argv[2] if len(argv) > 2 else None
             ok = download_coursera_course(course_url, output_path, cookies_file)
-            sys.exit(0 if ok else 1)
-    main_f(sys.argv[1:])
+            return 0 if ok else 1
+    main_f(argv)
+    return 0
 
 
 if __name__ == "__main__":
-    _cli_main()
+    sys.exit(_cli_main())

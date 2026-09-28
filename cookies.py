@@ -2,6 +2,7 @@
 Cookie handling module.
 """
 
+import json
 import logging
 import os
 import ssl
@@ -125,7 +126,10 @@ def prepare_auth_headers(session, include_cauth=False):
         CAUTH = session.cookies.get("CAUTH")
         cookie = "CAUTH=%s; %s" % (CAUTH, cookie)
 
-    logging.debug("Forging cookie header: %s.", cookie)
+    sanitized_cookie = cookie
+    if include_cauth and CAUTH:
+        sanitized_cookie = cookie.replace(f"CAUTH={CAUTH}", "CAUTH=[REDACTED]")
+    logging.debug("Forging cookie header: %s.", sanitized_cookie)
     headers = {
         "Cookie": cookie,
         "X-CSRFToken": csrftoken,
@@ -312,23 +316,125 @@ def load_cookies_file(cookies_file):
     logging.debug("Loading cookie file %s into memory.", cookies_file)
 
     cookies = StringIO()
-    cookies.write("# Netscape HTTP Cookie File")
-    cookies.write(open(cookies_file).read())
+    cookies.write("# Netscape HTTP Cookie File\n")
+    with open(cookies_file, "r", encoding="utf-8", errors="ignore") as f:
+        cookies.write(f.read())
     cookies.flush()
     cookies.seek(0)
     return cookies
 
 
-def get_cookie_jar(cookies_file):
-    cj = cookielib.MozillaCookieJar()
-    cookies = load_cookies_file(cookies_file)
+def load_cookies_from_file(cookies_path: str, default_domain: str = ".coursera.org") -> requests.cookies.RequestsCookieJar:
+    """Load cookies from file (Netscape format or JSON format) into a RequestsCookieJar in memory."""
+    if not os.path.exists(cookies_path):
+        raise FileNotFoundError(f"Cookies file not found: {cookies_path}")
 
-    # nasty hack: cj.load() requires a filename not a file, but if I use
-    # stringio, that file doesn't exist. I used NamedTemporaryFile before,
-    # but encountered problems on Windows.
-    cj._really_load(cookies, "StringIO.cookies", False, False)
+    cj = requests.cookies.RequestsCookieJar()
+    with open(cookies_path, "r", encoding="utf-8", errors="ignore") as f:
+        content = f.read()
 
+    # 1. Try parsing JSON format (Cookie-Editor, EditThisCookie, flat key-value dict)
+    try:
+        data = json.loads(content)
+        if isinstance(data, list):
+            for c in data:
+                if isinstance(c, dict) and "name" in c and "value" in c:
+                    cj.set(
+                        c.get("name"),
+                        c.get("value"),
+                        domain=c.get("domain", default_domain),
+                        path=c.get("path", "/"),
+                    )
+            if len(cj):
+                return cj
+        elif isinstance(data, dict):
+            for k, v in data.items():
+                cj.set(k, str(v), domain=default_domain, path="/")
+            if len(cj):
+                return cj
+    except Exception:
+        pass
+
+    # 2. Fallback to standard Netscape cookies.txt format
+    for line in content.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7:
+            domain, flag, path, secure, expiry, name, value = parts[:7]
+            cj.set(name, value, domain=domain, path=path)
     return cj
+
+
+def load_cookies_from_browser(browser_name: str, domain: str = "coursera.org") -> requests.cookies.RequestsCookieJar:
+    """Load session cookies from local browser profile into memory.
+
+    Tries rookiepy first, then browser_cookie3.
+    """
+    b_name = browser_name.lower().strip()
+    cj = requests.cookies.RequestsCookieJar()
+
+    # 1. Try rookiepy
+    try:
+        import rookiepy
+
+        fn = getattr(rookiepy, b_name, None)
+        if callable(fn):
+            cookies_list = fn(domains=[domain])
+            for c in cookies_list:
+                cj.set(
+                    c.get("name"),
+                    c.get("value"),
+                    domain=c.get("domain", domain),
+                    path=c.get("path", "/"),
+                )
+            if len(cj):
+                return cj
+    except (ImportError, Exception) as e:
+        logging.debug("rookiepy failed for browser %s: %s", b_name, e)
+
+    # 2. Try browser_cookie3
+    try:
+        import browser_cookie3
+
+        fn = getattr(browser_cookie3, b_name, None)
+        if callable(fn):
+            bcj = fn(domain_name=domain)
+            for c in bcj:
+                cj.set_cookie(c)
+            if len(cj):
+                return cj
+    except (ImportError, Exception) as e:
+        logging.debug("browser_cookie3 failed for browser %s: %s", b_name, e)
+
+    raise AuthenticationFailed(
+        f"Could not load cookies from browser '{browser_name}' for domain '{domain}'. "
+        "Ensure the browser profile exists or supply a cookies file using --cookies-file."
+    )
+
+
+def get_cookie_jar(cookies_file):
+    """Return a cookie jar supporting both Netscape format and JSON format."""
+    if not os.path.exists(cookies_file):
+        raise FileNotFoundError(f"Cookies file not found: {cookies_file}")
+
+    with open(cookies_file, "r", encoding="utf-8", errors="ignore") as f:
+        first_char = f.read(1024).strip()[:1]
+
+    # If file starts with '[' or '{', it's JSON format
+    if first_char in ("[", "{"):
+        return load_cookies_from_file(cookies_file, default_domain=".coursera.org")
+
+    # Otherwise try Netscape MozillaCookieJar
+    try:
+        cj = cookielib.MozillaCookieJar()
+        cookies = load_cookies_file(cookies_file)
+        cj._really_load(cookies, "StringIO.cookies", False, False)
+        return cj
+    except Exception:
+        # Fallback to universal loader
+        return load_cookies_from_file(cookies_file, default_domain=".coursera.org")
 
 
 def get_cookies_cache_path(username):

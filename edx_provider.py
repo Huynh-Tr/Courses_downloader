@@ -100,47 +100,10 @@ DEFAULT_ALLOWED_HOSTS = {
 }
 
 
-def load_cookies_from_file(cookies_path: str) -> requests.cookies.RequestsCookieJar:
+def load_cookies_from_file(cookies_path: str, default_domain: str = ".edx.org") -> requests.cookies.RequestsCookieJar:
     """Load cookies from file (Netscape format or JSON format) into a RequestsCookieJar in memory."""
-    if not os.path.exists(cookies_path):
-        raise FileNotFoundError(f"Cookies file not found: {cookies_path}")
-
-    cj = requests.cookies.RequestsCookieJar()
-    with open(cookies_path, "r", encoding="utf-8", errors="ignore") as f:
-        content = f.read()
-
-    # 1. Try parsing as JSON (exported by browser extensions like Cookie-Editor / EditThisCookie)
-    try:
-        data = json.loads(content)
-        if isinstance(data, list):
-            for c in data:
-                if isinstance(c, dict) and "name" in c and "value" in c:
-                    cj.set(
-                        c.get("name"),
-                        c.get("value"),
-                        domain=c.get("domain", ".edx.org"),
-                        path=c.get("path", "/"),
-                    )
-            if len(cj):
-                return cj
-        elif isinstance(data, dict):
-            for k, v in data.items():
-                cj.set(k, str(v), domain=".edx.org", path="/")
-            if len(cj):
-                return cj
-    except Exception:
-        pass
-
-    # 2. Fallback to standard Netscape cookies.txt format
-    for line in content.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 7:
-            domain, flag, path, secure, expiry, name, value = parts[:7]
-            cj.set(name, value, domain=domain, path=path)
-    return cj
+    import cookies
+    return cookies.load_cookies_from_file(cookies_path, default_domain=default_domain)
 
 
 def load_cookies_from_browser(browser_name: str, domain: str = "edx.org") -> requests.cookies.RequestsCookieJar:
@@ -148,46 +111,14 @@ def load_cookies_from_browser(browser_name: str, domain: str = "edx.org") -> req
 
     Tries rookiepy first, then browser_cookie3.
     """
-    b_name = browser_name.lower().strip()
-    cj = requests.cookies.RequestsCookieJar()
-
-    # Try rookiepy
+    import cookies
     try:
-        import rookiepy
-
-        fn = getattr(rookiepy, b_name, None)
-        if callable(fn):
-            cookies_list = fn(domains=[domain])
-            for c in cookies_list:
-                cj.set(
-                    c.get("name"),
-                    c.get("value"),
-                    domain=c.get("domain", domain),
-                    path=c.get("path", "/"),
-                )
-            if len(cj):
-                return cj
-    except (ImportError, Exception) as e:
-        logging.debug("rookiepy failed for browser %s: %s", b_name, e)
-
-    # Try browser_cookie3
-    try:
-        import browser_cookie3
-
-        fn = getattr(browser_cookie3, b_name, None)
-        if callable(fn):
-            bcj = fn(domain_name=domain)
-            for c in bcj:
-                cj.set_cookie(c)
-            if len(cj):
-                return cj
-    except (ImportError, Exception) as e:
-        logging.debug("browser_cookie3 failed for browser %s: %s", b_name, e)
-
-    raise EdxAuthError(
-        f"Could not load cookies from browser '{browser_name}'. "
-        "Ensure the browser profile exists or supply a Netscape cookies file using --cookies-file."
-    )
+        return cookies.load_cookies_from_browser(browser_name, domain=domain)
+    except Exception as e:
+        raise EdxAuthError(
+            f"Could not load cookies from browser '{browser_name}'. "
+            "Ensure the browser profile exists or supply a Netscape cookies file using --cookies-file."
+        ) from e
 
 
 def extract_edx_course_key(identifier_or_url: str) -> str:
