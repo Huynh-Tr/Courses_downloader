@@ -46,5 +46,6 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs & PIDs
 *.log
+*.pid
