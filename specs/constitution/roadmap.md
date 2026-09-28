@@ -27,11 +27,12 @@
   - **Acceptance**: mocked API/resource suite pass; restricted/DRM/HLS/YouTube-only content được skip có reason; authorized live walkthrough tải ít nhất một resource được phép và chạy lại idempotent.
   - **Status**: Hoàn thành toàn diện (117 tests pass; live walkthrough xác thực trên khóa MITx 15.481x: 539 resources discovery, 4 files tải thành công 86.6MB, rerun idempotent pass).
 
-- [ ] **Phase 03 — Entrypoint & Authentication Simplification**
-  - **Outcome / value**: bỏ global `sys.argv` mutation, hợp nhất URL→slug và cookie/session loading; secret không xuất hiện trong debug log.
-  - **Scope**: `coursera_dl.py`, `general.py`, `cookies.py`, shared CLI/provider dispatch; giữ alias/default/return/exit behavior đã test.
+- [x] **Phase 03 — Entrypoint & Authentication Simplification**
+  - **Outcome / value**: bỏ global `sys.argv` mutation, hợp nhất URL→slug và cookie/session loading; secret không xuất hiện trong debug log; xây dựng unified dispatcher `coursedownloader.py`.
+  - **Scope**: `coursera_dl.py`, `general.py`, `cookies.py`, `coursedownloader.py`; giữ alias/default/return/exit behavior đã test.
   - **Dependencies / assumptions**: Phase 01 safety net; edX auth lessons được ghi lại nếu Phase 02 hoàn tất.
-  - **Acceptance**: gọi Python API nhiều lần không thay `sys.argv`; auth branches chạy bằng mocks; Coursera CLI compatibility matrix pass.
+  - **Acceptance**: gọi Python API nhiều lần không thay `sys.argv`; auth branches chạy bằng mocks; Coursera & edX CLI compatibility matrix pass (134 tests pass exit 0).
+  - **Status**: Hoàn thành toàn diện (134 tests pass, sys.argv immutable, secret redaction, universal JSON/Netscape cookies, unified CLI).
 
 - [ ] **Phase 04 — Coursera Parser Decomposition**
   - **Outcome / value**: chia các concern trong `api.py`/`extractors.py` thành module nhỏ theo API resource/content type, giảm duplication retry/link parsing mà không đổi manifest.

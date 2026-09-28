@@ -1,6 +1,9 @@
 import re
 
-import rookiepy
+try:
+    import rookiepy
+except ImportError:
+    rookiepy = None
 
 # this dictionary holds language name as key and corresponding ISO language code as value
 LANG_NAME_TO_CODE_MAPPING = {
@@ -37,31 +40,71 @@ LANG_NAME_TO_CODE_MAPPING = {
 
 ALLOWED_BROWSERS = ["edge", "firefox", "brave"]
 
+COURSERA_LEARN_RE = re.compile(r"coursera\.org/learn/([a-zA-Z0-9_\-]+)", re.IGNORECASE)
+SLUG_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
+EDX_COURSE_KEY_RE = re.compile(
+    r"^course-v1:([a-zA-Z0-9_\-\.]+)[\+]([a-zA-Z0-9_\-\.]+)[\+]([a-zA-Z0-9_\-\.]+)$"
+)
+EDX_LEGACY_KEY_RE = re.compile(
+    r"^([a-zA-Z0-9_\-\.]+)/([a-zA-Z0-9_\-\.]+)/([a-zA-Z0-9_\-\.]+)$"
+)
+
+
+def extract_slug_from_url(url_or_slug: str, strict: bool = False) -> str:
+    """Extract canonical course slug from URL or validate slug string.
+
+    If strict is True, raises ValueError if the input is not a valid Coursera learn URL or slug.
+    If strict is False, returns empty string on failure.
+    """
+    target = url_or_slug.strip() if url_or_slug else ""
+    if not target:
+        if strict:
+            raise ValueError("Empty course URL or slug provided.")
+        return ""
+
+    # 1. If it's a URL
+    if target.startswith("http://") or target.startswith("https://"):
+        match = COURSERA_LEARN_RE.search(target)
+        if match:
+            return match.group(1).lower()
+        if strict:
+            raise ValueError(
+                f"Invalid Coursera URL: {url_or_slug}. "
+                "Expected format: https://www.coursera.org/learn/course-name"
+            )
+        return ""
+
+    # 2. If it's a plain slug
+    if SLUG_PATTERN.match(target):
+        return target.lower()
+
+    if strict:
+        raise ValueError(
+            f"Invalid Coursera course identifier: {url_or_slug}. "
+            "Expected slug or https://www.coursera.org/learn/course-name"
+        )
+    return ""
+
 
 # extract class name from course home page url
 def urltoclassname(homepageurl):
-    """this function assumes that the url is of this possible format:
-    1. https://www.coursera.org/learn/model-thinking
-    2. https://www.coursera.org/learn/model-thinking/home/week/1
-    3. https://www.coursera.org/learn/model-thinking?specialization=deep-learning
+    """Extract class name from course home page url or slug. Returns empty string if invalid."""
+    return extract_slug_from_url(homepageurl, strict=False)
 
-    if the url isn't in this format, program won't work"""
 
-    classname = ""
-
-    slug_pattern = r"^[a-zA-Z0-9-]+$"  # if the input is a slug, and not a url, it will consists of alphanumeric and hyphen
-    if re.search(slug_pattern, homepageurl):
-        # it's a slug, not a url
-        return homepageurl
-    else:
-        # it's a url
-        classname = re.findall(r"coursera\.org/learn/([^/?]+)", homepageurl.lower())
-        if len(classname) > 0:
-            classname = classname[0]  # if multiple match, take only the first one
-        else:
-            # no match
-            classname = ""
-        return classname
+def detect_platform(identifier_or_url: str) -> str:
+    """Detect whether an identifier or URL belongs to Coursera or edX."""
+    raw = identifier_or_url.strip() if identifier_or_url else ""
+    if not raw:
+        return "unknown"
+    raw_lower = raw.lower()
+    if "coursera.org/learn/" in raw_lower:
+        return "coursera"
+    if "learning.edx.org" in raw_lower or "courses.edx.org" in raw_lower or "edx.org" in raw_lower:
+        return "edx"
+    if EDX_COURSE_KEY_RE.match(raw) or EDX_LEGACY_KEY_RE.match(raw):
+        return "edx"
+    return "unknown"
 
 
 def loadcauth(domain: str, browser: str):
@@ -71,42 +114,24 @@ def loadcauth(domain: str, browser: str):
         browser - must be in the ALLOWED_BROWSERS list
 
     example use: loadcauth('coursera.org').
-
     """
-    cauth = ""
-
     if browser not in ALLOWED_BROWSERS:
         print(
             f"Browser not supported. Please login on one of these browsers: {', '.join(ALLOWED_BROWSERS)}"
         )
-        return cauth
-    else:
-        try:
-            if browser == "firefox":
-                # works even when script is run without admin access
-                cookies = rookiepy.firefox([domain])
-            elif browser == "edge":
-                # works only when script is run with admin access
-                cookies = rookiepy.edge([domain])
-            elif browser == "brave":
-                # works only when script is run with admin access
-                cookies = rookiepy.brave([domain])
-            # elif browser == "opera":
-            #     # does not work, throws error
-            #     cookies = rookiepy.opera([domain])
-            # elif browser == "opera_gx":
-            #     # does not work, throws error
-            #     cookies = rookiepy.opera_gx([domain])
-        except Exception as e:
-            print(f"Error fetching cookies: {e}")
-            print("Could not fetch authentication. Maybe run the app as administrator.")
-            return cauth
+        return ""
 
-    for cookie in cookies:
-        if cookie["name"] == "CAUTH":
-            cauth = cookie["value"]
-
-    return cauth
+    import cookies
+    try:
+        cj = cookies.load_cookies_from_browser(browser, domain=domain)
+        for c in cj:
+            if c.name == "CAUTH":
+                return c.value
+        return ""
+    except Exception as e:
+        print(f"Error fetching cookies: {e}")
+        print("Could not fetch authentication. Maybe run the app as administrator.")
+        return ""
 
 
 def move_to_first(dictionary, key):
