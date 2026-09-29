@@ -1,5 +1,5 @@
 """
-Test bootstrap and offline network guard for Coursera_downloader characterization tests.
+Test bootstrap and offline network guard for Courses_downloader characterization tests.
 """
 
 import argparse

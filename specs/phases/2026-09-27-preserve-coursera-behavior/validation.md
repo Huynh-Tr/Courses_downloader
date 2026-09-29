@@ -6,7 +6,7 @@
 
 | Check | Exact command / procedure | Observed baseline | Date / environment |
 | --- | --- | --- | --- |
-| Git context | `git status --short --branch && git log -1 --oneline` | trước scaffold: clean `main...origin/main`, `70684ea`; sau scaffold chỉ `?? specs/` | 2026-09-27, `/home/ubuntu/Coursera_downloader` |
+| Git context | `git status --short --branch && git log -1 --oneline` | trước scaffold: clean `main...origin/main`, `70684ea`; sau scaffold chỉ `?? specs/` | 2026-09-27, `/home/ubuntu/Courses_downloader` |
 | Runtime | `python3 --version`; `python --version` | Python 3.14.4 exit 0; `python` không tồn tại exit 127 | 2026-09-27 |
 | Syntax | Python script dùng `ast.parse` cho root `*.py` với `PYTHONDONTWRITEBYTECODE=1` | parsed 16 files, exit 0 | 2026-09-27 |
 | CLI health | `PYTHONDONTWRITEBYTECODE=1 python3 coursera_dl.py --version` | fail exit 1: `ModuleNotFoundError: No module named 'bs4'` | 2026-09-27; dependencies chưa cài |

@@ -1009,14 +1009,6 @@ class CourseraOnDemand:
             links = self._extract_videos_and_subtitles_from_lecture(
                 course_id, video_id, subtitle_language, resolution
             )
-
-            assets = self._get_lecture_asset_ids(course_id, video_id)
-            assets = self._normalize_assets(assets)
-            extend_supplement_links(
-                links, self._extract_links_from_lecture_assets(assets)
-            )
-
-            return links
         except requests.exceptions.HTTPError as exception:
             logging.error("Could not download lecture %s: %s", video_id, exception)
             if is_debug_run():
@@ -1024,6 +1016,17 @@ class CourseraOnDemand:
                     "Could not download lecture %s: %s", video_id, exception
                 )
             return None
+
+        try:
+            assets = self._get_lecture_asset_ids(course_id, video_id)
+            assets = self._normalize_assets(assets)
+            extend_supplement_links(
+                links, self._extract_links_from_lecture_assets(assets)
+            )
+        except Exception as e:
+            logging.debug("Could not download lecture assets for %s: %s", video_id, e)
+
+        return links
 
     def _get_lecture_asset_ids(self, course_id, video_id):
         """
@@ -1095,8 +1098,11 @@ class CourseraOnDemand:
             destination[extension].append((url, basename))
 
         for asset_id in asset_ids:
-            for asset in self._get_asset_urls(asset_id):
-                _add_asset(asset["name"], asset["url"], links)
+            try:
+                for asset in self._get_asset_urls(asset_id):
+                    _add_asset(asset["name"], asset["url"], links)
+            except Exception as e:
+                logging.debug("Could not get asset URLs for %s: %s", asset_id, e)
 
         return links
 
@@ -1677,6 +1683,13 @@ class CourseraOnDemand:
         @return: List of peer assignment text (instructions).
         @rtype: [str]
         """
+        if not self._user_id:
+            logging.debug(
+                "No user_id available; skipping peer assignment instructions for %s",
+                element_id,
+            )
+            return []
+
         dom = get_page(
             self._session,
             OPENCOURSE_PEER_ASSIGNMENT_INSTRUCTIONS,

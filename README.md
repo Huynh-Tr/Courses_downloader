@@ -57,14 +57,14 @@ The CLI and download logic live as Python modules in the repository root (for ex
 
 1. Clone or download this repository:
 ```bash
-git clone https://github.com/Huynh-Tr/Coursera_downloader.git
-cd Coursera_downloader
+git clone https://github.com/Huynh-Tr/Courses_downloader.git
+cd Courses_downloader
 ```
 
 Or with SSH:
 ```bash
-git clone git@github.com:Huynh-Tr/Coursera_downloader.git
-cd Coursera_downloader
+git clone git@github.com:Huynh-Tr/Courses_downloader.git
+cd Courses_downloader
 ```
 
 2. Install required Python packages:
