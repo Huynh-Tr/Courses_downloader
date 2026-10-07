@@ -116,38 +116,43 @@ def get_disk_usage() -> str:
     except Exception:
         return "Disk: N/A"
 
-def load_state() -> dict:
+def load_state(specs=None) -> dict:
+    specs = specs or SPECIALIZATIONS
+    state = None
     if STATE_FILE.exists():
         try:
             with open(STATE_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                state = json.load(f)
         except Exception as e:
             log(f"Warning: Failed to parse {STATE_FILE}: {e}")
 
-    # Initialize empty state
-    state = {
-        "created_at": datetime.now().isoformat(),
-        "updated_at": datetime.now().isoformat(),
-        "total_courses": sum(len(s["courses"]) for s in SPECIALIZATIONS),
-        "completed_count": 0,
-        "failed_count": 0,
-        "current_course": None,
-        "courses": {},
-    }
-    for spec in SPECIALIZATIONS:
+    # Initialize empty state if missing
+    if not state or not isinstance(state, dict):
+        state = {
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat(),
+            "total_courses": sum(len(s["courses"]) for s in specs),
+            "completed_count": 0,
+            "failed_count": 0,
+            "current_course": None,
+            "courses": {},
+        }
+    for spec in specs:
         for c in spec["courses"]:
-            state["courses"][c] = {
-                "specialization_id": spec["id"],
-                "specialization_name": spec["name"],
-                "folder": spec["folder"],
-                "status": "PENDING",  # PENDING, DOWNLOADING, UPLOADING, COMPLETED, FAILED
-                "files": 0,
-                "size_mb": 0.0,
-                "duration_s": 0.0,
-                "start_time": None,
-                "end_time": None,
-                "error": None,
-            }
+            if c not in state["courses"]:
+                state["courses"][c] = {
+                    "specialization_id": spec.get("id", "custom"),
+                    "specialization_name": spec.get("name", "Custom"),
+                    "folder": spec.get("folder", "Other"),
+                    "status": "PENDING",  # PENDING, DOWNLOADING, UPLOADING, COMPLETED, FAILED
+                    "files": 0,
+                    "size_mb": 0.0,
+                    "duration_s": 0.0,
+                    "start_time": None,
+                    "end_time": None,
+                    "error": None,
+                }
+    state["total_courses"] = len(state["courses"])
     return state
 
 def save_state(state: dict):
@@ -296,9 +301,51 @@ def upload_and_symlink(course: str, folder: str) -> tuple[bool, int, float, str 
         log(f"[{course}] ERROR: {err}. Keeping local files for safety.")
         return False, local_count, size_mb, err
 
-def main():
+def main(argv=None):
+    import argparse
+    import general
+
+    parser = argparse.ArgumentParser(description="Coursera Queue Downloader & GDrive Backup")
+    parser.add_argument("courses", nargs="*", help="Course slugs or URLs to queue")
+    parser.add_argument("--folder", default=None, help="Google Drive category folder name")
+    parser.add_argument("--name", default=None, help="Group / Specialization display name")
+    parser.add_argument("--file", help="Path to text or JSON file listing course slugs")
+    args = parser.parse_args(argv)
+
     os.chdir(str(APP_DIR))
     DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Determine target courses and specializations
+    target_specs = []
+    course_list = []
+    if args.courses:
+        for item in args.courses:
+            for part in item.split(","):
+                part = part.strip()
+                if part:
+                    slug = general.extract_slug_from_url(part) or part
+                    course_list.append(slug)
+
+    if args.file and os.path.exists(args.file):
+        with open(args.file, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    slug = general.extract_slug_from_url(line) or line
+                    course_list.append(slug)
+
+    if course_list:
+        folder_name = args.folder or "Custom Downloads"
+        spec_name = args.name or folder_name
+        target_specs = [{
+            "id": "cli-custom-queue",
+            "name": spec_name,
+            "url": "",
+            "folder": folder_name,
+            "courses": course_list,
+        }]
+    else:
+        target_specs = SPECIALIZATIONS
 
     # Acquire lock file
     lock_file = open(LOCK_FILE, "w")
@@ -311,17 +358,17 @@ def main():
     log("=" * 80)
     log("COURSERA QUEUE DOWNLOADER & GDRIVE BACKUP SERVICE STARTED")
     log(f"Working Directory: {APP_DIR}")
-    log(f"Total Specializations: {len(SPECIALIZATIONS)}")
-    log(f"Total Courses in Queue: {sum(len(s['courses']) for s in SPECIALIZATIONS)}")
+    log(f"Total Specializations: {len(target_specs)}")
+    log(f"Total Courses in Queue: {sum(len(s['courses']) for s in target_specs)}")
     log(f"Initial {get_disk_usage()}")
     log("=" * 80)
 
-    state = load_state()
+    state = load_state(specs=target_specs)
     save_state(state)
 
     total_idx = 0
     all_courses_flat = []
-    for spec in SPECIALIZATIONS:
+    for spec in target_specs:
         for c in spec["courses"]:
             all_courses_flat.append((spec, c))
 
