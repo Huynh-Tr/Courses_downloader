@@ -253,7 +253,10 @@ def main(argv: Optional[List[str]] = None) -> int:
         blocks_data = client.get_course_blocks(course_key)
 
         # 2. Parse course
-        edx_parser = edx_provider.EdxCourseParser(subtitle_language=args.sub_lang)
+        edx_parser = edx_provider.EdxCourseParser(
+            subtitle_language=args.sub_lang,
+            base_url=base_url,
+        )
         manifest, skips = edx_parser.parse(blocks_data, course_key=course_key)
 
         # 3. Plan downloads using Phase 01 neutral core

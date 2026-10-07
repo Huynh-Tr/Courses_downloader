@@ -247,9 +247,11 @@ class EdxCourseParser:
         self,
         subtitle_language: str = "en",
         allowed_hosts: Optional[Set[str]] = None,
+        base_url: Optional[str] = None,
     ):
         self._sub_lang = subtitle_language.lower().strip()
         self._allowed_hosts = allowed_hosts or DEFAULT_ALLOWED_HOSTS
+        self._base_url = base_url.rstrip("/") if base_url else None
 
     def parse(
         self,
@@ -321,6 +323,7 @@ class EdxCourseParser:
                         vert_block=vert_block,
                         blocks=blocks,
                         skipped_items=skipped_items,
+                        course_key=course_key,
                     )
 
                     if resources:
@@ -371,6 +374,7 @@ class EdxCourseParser:
         vert_block: Dict[str, Any],
         blocks: Dict[str, Any],
         skipped_items: List[SkippedItem],
+        course_key: Optional[str] = None,
     ) -> List[models.Resource]:
         """Extract valid downloadable resources from a vertical unit."""
         resources: List[models.Resource] = []
@@ -387,7 +391,7 @@ class EdxCourseParser:
 
             if comp_type == "video":
                 v_resources = self._parse_video_block(
-                    comp_id, comp_title, student_data, skipped_items, start_idx=r_idx
+                    comp_id, comp_title, student_data, skipped_items, start_idx=r_idx, course_key=course_key
                 )
                 resources.extend(v_resources)
                 r_idx += len(v_resources)
@@ -419,6 +423,7 @@ class EdxCourseParser:
         student_data: Dict[str, Any],
         skipped_items: List[SkippedItem],
         start_idx: int = 0,
+        course_key: Optional[str] = None,
     ) -> List[models.Resource]:
         """Parse video component: extracts best direct MP4 and requested subtitles."""
         resources: List[models.Resource] = []
@@ -500,6 +505,7 @@ class EdxCourseParser:
 
         # 3. Discover subtitles / transcripts
         transcripts = student_data.get("transcripts") or student_data.get("subtitles") or {}
+        sub_url = None
         if isinstance(transcripts, dict) and transcripts:
             # Select requested language first, or default to English / first available
             sub_url = (
@@ -507,31 +513,36 @@ class EdxCourseParser:
                 or transcripts.get("en")
                 or next(iter(transcripts.values()), None)
             )
-            if sub_url and isinstance(sub_url, str):
-                sub_url = sub_url.strip()
-                # Determine subtitle format extension
-                ext = "vtt" if ".vtt" in sub_url.lower() else "srt"
-                sub_title = f"{title}.{self._sub_lang}"
-                if is_safe_edx_url(sub_url, self._allowed_hosts):
-                    resources.append(
-                        models.Resource(
-                            index=cur_idx,
-                            format=ext,
-                            title=sub_title,
-                            source=sub_url,
-                            kind="subtitle",
-                        )
+
+        # Fallback to standard Open edX transcript handler if not present in student_data (only for downloadable videos)
+        if not sub_url and selected_url and self._base_url and course_key and block_id:
+            sub_url = f"{self._base_url}/courses/{course_key}/xblock/{block_id}/handler/transcript/download"
+
+        if sub_url and isinstance(sub_url, str):
+            sub_url = sub_url.strip()
+            # Determine subtitle format extension
+            ext = "vtt" if ".vtt" in sub_url.lower() else "srt"
+            sub_title = f"{title}.{self._sub_lang}"
+            if is_safe_edx_url(sub_url, self._allowed_hosts):
+                resources.append(
+                    models.Resource(
+                        index=cur_idx,
+                        format=ext,
+                        title=sub_title,
+                        source=sub_url,
+                        kind="subtitle",
                     )
-                    cur_idx += 1
-                else:
-                    skipped_items.append(
-                        SkippedItem(
-                            block_id=block_id,
-                            title=sub_title,
-                            category="UNSAFE_URL",
-                            reason=f"Subtitle URL failed security allowlist check: {redact_url(sub_url)}",
-                        )
+                )
+                cur_idx += 1
+            else:
+                skipped_items.append(
+                    SkippedItem(
+                        block_id=block_id,
+                        title=sub_title,
+                        category="UNSAFE_URL",
+                        reason=f"Subtitle URL failed security allowlist check: {redact_url(sub_url)}",
                     )
+                )
 
         return resources
 
@@ -823,6 +834,9 @@ class EdxDownloader(workflow.CourseDownloader):
                                 logging.debug("Candidate %s returned 404, trying fallback...", redact_url(current_url))
                                 break
                             err = "HTTP 404 Not Found"
+                            if filename.endswith((".srt", ".vtt")):
+                                logging.info("Transcript not available on LMS (%s): %s (skipping)", err, redact_url(current_url))
+                                return False
                             logging.error("Download failed (%s): %s", err, redact_url(current_url))
                             self.summary.failed += 1
                             self.summary.failed_details.append((filename, redact_url(current_url), err))
