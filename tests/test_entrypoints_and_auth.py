@@ -213,6 +213,10 @@ class TestUrlAndSlugHarmonization(unittest.TestCase):
             "edx",
         )
         self.assertEqual(
+            general.detect_platform("https://courses.learn.mit.edu/learn/course/course-v1:MITxT+15.415.2x+2T2026/home"),
+            "edx",
+        )
+        self.assertEqual(
             general.detect_platform("MITx/6.00.1x/3T2026"),
             "edx",
         )

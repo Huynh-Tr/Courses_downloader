@@ -49,3 +49,10 @@ Thumbs.db
 # Logs & PIDs
 *.log
 *.pid
+
+# Queue runtime state & lock
+*.lock
+queue_state.json
+queue_state.json.tmp
+queue_state.tmp
+

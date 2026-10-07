@@ -13,6 +13,8 @@ dependencies = [
     "requests>=2.32.0",
     "configargparse>=0.12.0",
     "packaging>=24.0",
+    "attrs>=21.0.0",
+    "six>=1.16.0",
 ]
 
 [project.scripts]

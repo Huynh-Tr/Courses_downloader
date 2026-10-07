@@ -97,6 +97,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
         help="Maximum number of resources to download (0 = unlimited)",
     )
     parser.add_argument(
+        "--base-url",
+        dest="base_url",
+        type=str,
+        default=None,
+        help="Base LMS URL for Open edX platform (e.g. https://courses.edx.org or https://courses.learn.mit.edu)",
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"edx-dl {__version__}",
@@ -119,6 +126,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
 def create_edx_session(
     cookies_file: Optional[str] = None,
     browser: Optional[str] = None,
+    default_domain: str = ".edx.org",
 ) -> requests.Session:
     """Construct an authenticated requests.Session for edX from cookies file or browser."""
     session = requests.Session()
@@ -131,11 +139,11 @@ def create_edx_session(
     })
 
     if cookies_file:
-        jar = edx_provider.load_cookies_from_file(cookies_file)
+        jar = edx_provider.load_cookies_from_file(cookies_file, default_domain=default_domain)
         session.cookies.update(jar)
         logging.info("Loaded edX session cookies from %s", cookies_file)
     elif browser:
-        jar = edx_provider.load_cookies_from_browser(browser)
+        jar = edx_provider.load_cookies_from_browser(browser, domain=default_domain.lstrip("."))
         session.cookies.update(jar)
         logging.info("Imported edX session cookies from browser '%s'", browser)
 
@@ -221,14 +229,25 @@ def main(argv: Optional[List[str]] = None) -> int:
     print(COMPLIANCE_NOTICE)
 
     try:
-        course_key = edx_provider.extract_edx_course_key(args.course)
-        logging.info("Target edX course key: %s", course_key)
+        from urllib.parse import urlparse
 
+        base_url = args.base_url
+        if not base_url and (args.course.startswith("http://") or args.course.startswith("https://")):
+            parsed_course_url = urlparse(args.course)
+            base_url = f"{parsed_course_url.scheme}://{parsed_course_url.netloc}"
+        if not base_url:
+            base_url = "https://courses.edx.org"
+
+        course_key = edx_provider.extract_edx_course_key(args.course)
+        logging.info("Target edX course key: %s (LMS: %s)", course_key, base_url)
+
+        default_cookie_domain = ".learn.mit.edu" if "mit.edu" in base_url else ".edx.org"
         session = create_edx_session(
             cookies_file=args.cookies_file,
             browser=args.browser,
+            default_domain=default_cookie_domain,
         )
-        client = edx_provider.EdxClient(session)
+        client = edx_provider.EdxClient(session, base_url=base_url)
 
         # 1. Fetch blocks
         blocks_data = client.get_course_blocks(course_key)
@@ -238,7 +257,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         manifest, skips = edx_parser.parse(blocks_data, course_key=course_key)
 
         # 3. Plan downloads using Phase 01 neutral core
-        target_path = os.path.join(args.path, "edx")
+        target_path = (
+            args.path
+            if os.path.basename(args.path.rstrip("/\\")) in ("edx", "Edx", "MIT")
+            else os.path.join(args.path, "edx")
+        )
         planned_modules = workflow.plan_downloads(
             modules=manifest,
             class_name=manifest.slug,

@@ -94,6 +94,8 @@ DEFAULT_ALLOWED_HOSTS = {
     "courses.edx.org",
     "learning.edx.org",
     "edx.org",
+    "courses.learn.mit.edu",
+    "learn.mit.edu",
     "edx-video.net",
     "cloudfront.net",
     "s3.amazonaws.com",
@@ -166,6 +168,18 @@ def redact_url(url: str) -> str:
         return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
     except Exception:
         return "[redacted-url]"
+
+
+def get_candidate_urls(raw_url: str) -> List[str]:
+    """Generate candidate URLs for CDN fallbacks (edx-video.net vs CloudFront)."""
+    candidates = [raw_url]
+    if "edx-video.net" in raw_url:
+        candidates.append(raw_url.replace("edx-video.net", "d3tsb3m56iwvoq.cloudfront.net"))
+    elif "d3tsb3m56iwvoq.cloudfront.net" in raw_url:
+        candidates.append(raw_url.replace("d3tsb3m56iwvoq.cloudfront.net", "edx-video.net"))
+    if "/transcoded/" in raw_url:
+        candidates.reverse()
+    return candidates
 
 
 def is_safe_edx_url(url: str, allowed_hosts: Optional[Set[str]] = None) -> bool:
@@ -433,6 +447,14 @@ class EdxCourseParser:
                 if candidate_url and isinstance(candidate_url, str):
                     selected_url = candidate_url.strip()
                     break
+
+        if not selected_url:
+            sources = student_data.get("sources") or []
+            if isinstance(sources, list):
+                for s in sources:
+                    if isinstance(s, str) and ".mp4" in s.lower():
+                        selected_url = s.strip()
+                        break
 
         if selected_url:
             if is_safe_edx_url(selected_url, self._allowed_hosts):
@@ -737,7 +759,12 @@ class EdxDownloader(workflow.CourseDownloader):
         # 4. Scope session cookies: do not send edX auth cookies to external CDNs/S3
         parsed = urlsplit(url)
         host = (parsed.hostname or "").lower()
-        is_edx_domain = host == "edx.org" or host.endswith(".edx.org")
+        is_edx_domain = (
+            host == "edx.org"
+            or host.endswith(".edx.org")
+            or host == "learn.mit.edu"
+            or host.endswith(".learn.mit.edu")
+        )
 
         if is_edx_domain:
             req_session = self.session
@@ -748,118 +775,125 @@ class EdxDownloader(workflow.CourseDownloader):
             )
 
         part_filename = f"{filename}.part"
-        attempt = 0
+        candidate_urls = get_candidate_urls(url)
 
-        while attempt <= self.max_retries:
-            try:
-                logging.info("Downloading: %s", filename)
-                resp = req_session.get(
-                    url,
-                    stream=True,
-                    timeout=(10, self.timeout),
-                    allow_redirects=True,
-                )
-
-                # Validate redirects
-                with resp:
-                    if resp.url and not is_safe_edx_url(resp.url, self.allowed_hosts):
-                        raise EdxError(f"Redirected to unsafe URL: {redact_url(resp.url)}")
-                    for hist in resp.history:
-                        if hist.url and not is_safe_edx_url(hist.url, self.allowed_hosts):
-                            raise EdxError(f"Redirect hop unsafe: {redact_url(hist.url)}")
-
-                    if resp.status_code == 200:
-                        with open(part_filename, "wb") as f:
-                            for chunk in resp.iter_content(chunk_size=65536):
-                                if chunk:
-                                    f.write(chunk)
-                                    self.summary.bytes_downloaded += len(chunk)
-                        os.replace(part_filename, filename)
-                        self.summary.downloaded += 1
-                        logging.info("Completed: %s", filename)
-                        return True
-
-                    elif resp.status_code in (401, 403):
-                        # Auth failure: do not retry
-                        err = f"HTTP {resp.status_code} Forbidden/Unauthorized"
-                        logging.error("Download failed (%s): %s", err, redact_url(url))
-                        self.summary.failed += 1
-                        self.summary.failed_details.append((filename, redact_url(url), err))
-                        return False
-
-                    elif resp.status_code == 404:
-                        err = "HTTP 404 Not Found"
-                        logging.error("Download failed (%s): %s", err, redact_url(url))
-                        self.summary.failed += 1
-                        self.summary.failed_details.append((filename, redact_url(url), err))
-                        return False
-
-                    elif resp.status_code == 429:
-                        retry_after_str = resp.headers.get("Retry-After")
-                        wait_time = 2
-                        if retry_after_str and retry_after_str.isdigit():
-                            wait_time = min(int(retry_after_str), 10)
-                        attempt += 1
-                        if attempt <= self.max_retries:
-                            logging.warning(
-                                "Rate limited (HTTP 429). Waiting %ds before retry %d/%d...",
-                                wait_time, attempt, self.max_retries,
-                            )
-                            time.sleep(wait_time)
-                            continue
-                        else:
-                            err = "HTTP 429 Rate Limit Exceeded"
-                            logging.error("Download failed: %s", err)
-                            self.summary.failed += 1
-                            self.summary.failed_details.append((filename, redact_url(url), err))
-                            return False
-
-                    else:
-                        # 5xx or other status: retry with backoff
-                        attempt += 1
-                        if attempt <= self.max_retries:
-                            wait_time = 2 ** attempt
-                            logging.warning(
-                                "HTTP %d error for %s. Retrying in %ds...",
-                                resp.status_code, filename, wait_time,
-                            )
-                            time.sleep(wait_time)
-                            continue
-                        else:
-                            err = f"HTTP {resp.status_code} Server Error"
-                            logging.error("Download failed: %s", err)
-                            self.summary.failed += 1
-                            self.summary.failed_details.append((filename, redact_url(url), err))
-                            return False
-
-            except requests.exceptions.RequestException as e:
-                attempt += 1
-                if attempt <= self.max_retries:
-                    wait_time = 2 ** attempt
-                    logging.warning(
-                        "Network error (%s) downloading %s. Retrying in %ds...",
-                        e, filename, wait_time,
+        for cand_idx, current_url in enumerate(candidate_urls):
+            attempt = 0
+            while attempt <= self.max_retries:
+                try:
+                    logging.info("Downloading: %s", filename)
+                    resp = req_session.get(
+                        current_url,
+                        stream=True,
+                        timeout=(10, self.timeout),
+                        allow_redirects=True,
                     )
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    err = f"Network error: {type(e).__name__}"
-                    logging.error("Download failed: %s", err)
+
+                    # Validate redirects
+                    with resp:
+                        if resp.url and not is_safe_edx_url(resp.url, self.allowed_hosts):
+                            raise EdxError(f"Redirected to unsafe URL: {redact_url(resp.url)}")
+                        for hist in resp.history:
+                            if hist.url and not is_safe_edx_url(hist.url, self.allowed_hosts):
+                                raise EdxError(f"Redirect hop unsafe: {redact_url(hist.url)}")
+
+                        if resp.status_code == 200:
+                            with open(part_filename, "wb") as f:
+                                for chunk in resp.iter_content(chunk_size=65536):
+                                    if chunk:
+                                        f.write(chunk)
+                                        self.summary.bytes_downloaded += len(chunk)
+                            os.replace(part_filename, filename)
+                            self.summary.downloaded += 1
+                            logging.info("Completed: %s", filename)
+                            return True
+
+                        elif resp.status_code in (401, 403):
+                            if cand_idx < len(candidate_urls) - 1:
+                                logging.debug("Candidate %s returned %d, trying fallback...", redact_url(current_url), resp.status_code)
+                                break
+                            err = f"HTTP {resp.status_code} Forbidden/Unauthorized"
+                            logging.error("Download failed (%s): %s", err, redact_url(current_url))
+                            self.summary.failed += 1
+                            self.summary.failed_details.append((filename, redact_url(current_url), err))
+                            return False
+
+                        elif resp.status_code == 404:
+                            if cand_idx < len(candidate_urls) - 1:
+                                logging.debug("Candidate %s returned 404, trying fallback...", redact_url(current_url))
+                                break
+                            err = "HTTP 404 Not Found"
+                            logging.error("Download failed (%s): %s", err, redact_url(current_url))
+                            self.summary.failed += 1
+                            self.summary.failed_details.append((filename, redact_url(current_url), err))
+                            return False
+
+                        elif resp.status_code == 429:
+                            retry_after_str = resp.headers.get("Retry-After")
+                            wait_time = 2
+                            if retry_after_str and retry_after_str.isdigit():
+                                wait_time = min(int(retry_after_str), 10)
+                            attempt += 1
+                            if attempt <= self.max_retries:
+                                logging.warning(
+                                    "Rate limited (HTTP 429). Waiting %ds before retry %d/%d...",
+                                    wait_time, attempt, self.max_retries,
+                                )
+                                time.sleep(wait_time)
+                                continue
+                            else:
+                                err = "HTTP 429 Rate Limit Exceeded"
+                                logging.error("Download failed: %s", err)
+                                self.summary.failed += 1
+                                self.summary.failed_details.append((filename, redact_url(current_url), err))
+                                return False
+
+                        else:
+                            # 5xx or other status: retry with backoff
+                            attempt += 1
+                            if attempt <= self.max_retries:
+                                wait_time = 2 ** attempt
+                                logging.warning(
+                                    "HTTP %d error for %s. Retrying in %ds...",
+                                    resp.status_code, filename, wait_time,
+                                )
+                                time.sleep(wait_time)
+                                continue
+                            else:
+                                err = f"HTTP {resp.status_code} Server Error"
+                                logging.error("Download failed: %s", err)
+                                self.summary.failed += 1
+                                self.summary.failed_details.append((filename, redact_url(current_url), err))
+                                return False
+
+                except requests.exceptions.RequestException as e:
+                    attempt += 1
+                    if attempt <= self.max_retries:
+                        wait_time = 2 ** attempt
+                        logging.warning(
+                            "Network error (%s) downloading %s. Retrying in %ds...",
+                            e, filename, wait_time,
+                        )
+                        time.sleep(wait_time)
+                        continue
+                    else:
+                        err = f"Network error: {type(e).__name__}"
+                        logging.error("Download failed: %s", err)
+                        self.summary.failed += 1
+                        self.summary.failed_details.append((filename, redact_url(current_url), err))
+                        return False
+                except Exception as e:
+                    err = str(e)
+                    logging.error("Download error for %s: %s", filename, err)
                     self.summary.failed += 1
-                    self.summary.failed_details.append((filename, redact_url(url), err))
+                    self.summary.failed_details.append((filename, redact_url(current_url), err))
                     return False
-            except Exception as e:
-                err = str(e)
-                logging.error("Download error for %s: %s", filename, err)
-                self.summary.failed += 1
-                self.summary.failed_details.append((filename, redact_url(url), err))
-                return False
-            finally:
-                if os.path.exists(part_filename):
-                    try:
-                        os.remove(part_filename)
-                    except OSError:
-                        pass
+                finally:
+                    if os.path.exists(part_filename):
+                        try:
+                            os.remove(part_filename)
+                        except OSError:
+                            pass
 
         return False
 

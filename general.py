@@ -100,9 +100,14 @@ def detect_platform(identifier_or_url: str) -> str:
     raw_lower = raw.lower()
     if "coursera.org/learn/" in raw_lower:
         return "coursera"
-    if "learning.edx.org" in raw_lower or "courses.edx.org" in raw_lower or "edx.org" in raw_lower:
+    if (
+        "learning.edx.org" in raw_lower
+        or "courses.edx.org" in raw_lower
+        or "edx.org" in raw_lower
+        or "learn.mit.edu" in raw_lower
+    ):
         return "edx"
-    if EDX_COURSE_KEY_RE.match(raw) or EDX_LEGACY_KEY_RE.match(raw):
+    if "course-v1:" in raw or EDX_COURSE_KEY_RE.match(raw) or EDX_LEGACY_KEY_RE.match(raw):
         return "edx"
     return "unknown"
 

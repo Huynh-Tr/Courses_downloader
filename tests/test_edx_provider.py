@@ -261,6 +261,24 @@ class TestEdxClient(unittest.TestCase):
         with self.assertRaises(edx_provider.EdxCourseNotFoundError):
             self.client.get_course_blocks("course-v1:Unknown+Course+Run")
 
+    def test_mitx_allowed_hosts_and_safety(self):
+        self.assertTrue(edx_provider.is_safe_edx_url("https://courses.learn.mit.edu/api/blocks"))
+        self.assertTrue(edx_provider.is_safe_edx_url("https://learn.mit.edu/course"))
+        self.assertTrue(edx_provider.is_safe_edx_url("https://d3tsb3m56iwvoq.cloudfront.net/video.mp4"))
+
+    def test_candidate_urls_generation(self):
+        cand1 = edx_provider.get_candidate_urls("https://edx-video.net/123-mp4_720p.mp4")
+        self.assertEqual(len(cand1), 2)
+        self.assertEqual(cand1[0], "https://edx-video.net/123-mp4_720p.mp4")
+        self.assertEqual(cand1[1], "https://d3tsb3m56iwvoq.cloudfront.net/123-mp4_720p.mp4")
+
+        cand2 = edx_provider.get_candidate_urls("https://edx-video.net/transcoded/123/video.mp4")
+        self.assertEqual(cand2[0], "https://d3tsb3m56iwvoq.cloudfront.net/transcoded/123/video.mp4")
+
+    def test_client_custom_base_url(self):
+        mit_client = edx_provider.EdxClient(self.session, base_url="https://courses.learn.mit.edu")
+        self.assertEqual(mit_client._base_url, "https://courses.learn.mit.edu")
+
 
 if __name__ == "__main__":
     unittest.main()
